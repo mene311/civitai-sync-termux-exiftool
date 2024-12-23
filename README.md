@@ -19,181 +19,218 @@ Civitai's web-based image explorer lacks advanced browsing capabilities, and exi
 
 Setting Up CivitAI Sync and Find&Copy Script on Termux for Android
 
-This guide walks you through setting up CivitAI Sync and a custom Find&Copy Bash Script on Termux, enabling you to efficiently download, organize, and search your AI-generated images using EXIF metadata directly from your Android device.
-📲 1. Install Termux and Enable Shared Storage
+### **Complete Guide: Setting Up CivitAI Sync and Find&Copy Script on Termux for Android**
 
-    Download Termux:
-        Install Termux from F-Droid.
+This guide walks you through setting up **CivitAI Sync** and a custom **Find&Copy Bash Script** on **Termux**, enabling you to efficiently **download, organize, and search your AI-generated images** using EXIF metadata directly from your Android device.
 
-    Update and Upgrade Packages:
+---
 
-pkg update && pkg upgrade
+## 📲 **1. Install Termux and Enable Shared Storage**
 
-Enable Shared Storage Access:
+1. **Download Termux:**  
+   - Install Termux from [F-Droid](https://f-droid.org/en/packages/com.termux/).
 
-termux-setup-storage
+2. **Update and Upgrade Packages:**  
+   ```bash
+   pkg update && pkg upgrade
+   ```
 
-    Grant the necessary permissions when prompted.
+3. **Enable Shared Storage Access:**  
+   ```bash
+   termux-setup-storage
+   ```
+   - Grant the necessary permissions when prompted.
 
-Verify Storage Access:
+4. **Verify Storage Access:**  
+   ```bash
+   ls ~/storage/shared
+   ```
+   You should see folders like `DCIM`, `Download`, etc.
 
-    ls ~/storage/shared
+---
 
-    You should see folders like DCIM, Download, etc.
+## ⚙️ **2. Install Required Tools**
 
-⚙️ 2. Install Required Tools
+1. **Install Node.js, Git, and ExifTool:**  
+   ```bash
+   pkg install nodejs git exiftool
+   ```
 
-    Install Node.js, Git, and ExifTool:
+2. **Verify Installations:**  
+   ```bash
+   node -v
+   git --version
+   exiftool -ver
+   ```
 
-pkg install nodejs git exiftool
+---
 
-Verify Installations:
+## 💻 **3. Install CivitAI Sync**
 
-    node -v
-    git --version
-    exiftool -ver
+1. **Clone the CivitAI Sync Repository:**  
+   ```bash
+        cd ~/storage/shared
+        mkdir -p civitai-sync
+        cd civitai-sync
+        git clone https://github.com/monkeypuzzl/civitai-sync.git
+   ```
 
-💻 3. Install CivitAI Sync
+2. **Install Dependencies:**  
+   ```bash
+   npm install
+   ```
 
-    Clone the CivitAI Sync Repository:
+3. **Run the Configuration Wizard:**  
+   Instead of manually editing the configuration file, use the built-in wizard:  
+   ```bash
+   npm run cli
+   ```
+   - Follow the prompts to set up your **API Key** and preferences interactively.
+   - Images should download to `~/civitai-sync/generations`.
+     
+4. **Test CivitAI Sync:**  
+   - Run   `npm run cli` and download the latest generations to `~/civitai-sync/generations`.
+  
+---
 
-cd ~
-git clone https://github.com/monkeypuzzl/civitai-sync.git
-cd civitai-sync
+## 🔍 **4. Set Up the Find&Copy Bash Script**
 
-Install Dependencies:
+1. **Create the Script Directory:**  
+   ```bash
+   mkdir -p ~/scripts
+   cd ~/scripts
+   ```
 
-npm install
+2. **Create the Script File:**  
+   ```bash
+   nano fnc.sh
+   ```
 
-Run the Configuration Wizard:
-Instead of manually editing the configuration file, use the built-in wizard:
+3. **Paste the Script:**  
+   ```bash
+   #!/bin/bash
 
-npm run cli
+   # Basic Configuration
+   CARPETA_RAIZ="$HOME/storage/shared/xImages"
+   CARPETA_ORIGEN="$HOME/storage/shared/civitai_generations"
 
-    Follow the prompts to set up your API Key and preferences interactively.
+   if [ -z "$1" ]; then
+     echo "Usage: $0 '<search condition>'"
+     echo "       $0 -purge"
+     exit 1
+   fi
 
-Test CivitAI Sync:
+   # Option: -purge
+   if [ "$1" == "-purge" ]; then
+     echo "Removing all folders in $CARPETA_RAIZ..."
+     rm -rf "$CARPETA_RAIZ"/*
+     echo "Folders removed."
+     exit 0
+   fi
 
-    node src/cli.mjs download-latest-generations
+   mkdir -p "$CARPETA_RAIZ"
 
-        Images should download to ~/civitai-sync/generations.
+   # Get search phrase and clean folder name
+   PHRASE="$1"
+   CARPETA_LIMPIA=$(echo "$PHRASE" | sed 's/&&/and/g; s/||/or/g; s/!/not/g' | tr ' ' '_')
+   CARPETA_DESTINO="$CARPETA_RAIZ/$CARPETA_LIMPIA"
+   mkdir -p "$CARPETA_DESTINO"
 
-🔍 4. Set Up the Find&Copy Bash Script
+   # Generate condition explicitly handling logical operators
+   CONDITION=""
+   for TOKEN in $PHRASE; do
+     case "$TOKEN" in
+       "&&")
+         CONDITION="$CONDITION &&"
+         ;;
+       "||")
+         CONDITION="$CONDITION ||"
+         ;;
+       "!")
+         CONDITION="$CONDITION !"
+         ;;
+       *)
+         CONDITION="$CONDITION (\$UserComment =~ /$TOKEN/i)"
+         ;;
+     esac
+   done
 
-    Create the Script Directory:
+   echo "Generated condition: $CONDITION"
 
-mkdir -p ~/scripts
-cd ~/scripts
+   # Run exiftool to copy matching files
+   exiftool -r -if "$CONDITION" -p "\$Directory/\$Filename" "$CARPETA_ORIGEN" | while read FILE; do
+     cp "$FILE" "$CARPETA_DESTINO/" || echo "Error copying $FILE"
+   done
 
-Create the Script File:
+   echo "Images copied to $CARPETA_DESTINO."
+   ```
 
-nano fnc.sh
+4. **Make the Script Executable:**  
+   ```bash
+   chmod +x fnc.sh
+   ```
 
-Paste the Script:
+---
 
-#!/bin/bash
+## 🚀 **5. How to Use the Script**
 
-# Basic Configuration
-CARPETA_RAIZ="$HOME/storage/shared/xImages"
-CARPETA_ORIGEN="$HOME/storage/shared/civitai_generations"
+1. **Search for Images with Keywords:**  
+   ```bash
+   ~/scripts/fnc.sh 'elf && Christmas || !Santa'
+   ```
+   - Matching images will be copied to `~/storage/shared/xImages/elf_and_Christmas_or_notSanta`.
 
-if [ -z "$1" ]; then
-  echo "Usage: $0 '<search condition>'"
-  echo "       $0 -purge"
-  exit 1
-fi
+2. **Purge All Results:**  
+   ```bash
+   ~/scripts/fnc.sh -purge
+   ```
 
-# Option: -purge
-if [ "$1" == "-purge" ]; then
-  echo "Removing all folders in $CARPETA_RAIZ..."
-  rm -rf "$CARPETA_RAIZ"/*
-  echo "Folders removed."
-  exit 0
-fi
+3. **Verify Copied Files:**  
+   ```bash
+   ls ~/storage/shared/xImages
+   ```
 
-mkdir -p "$CARPETA_RAIZ"
+---
 
-# Get search phrase and clean folder name
-PHRASE="$1"
-CARPETA_LIMPIA=$(echo "$PHRASE" | sed 's/&&/and/g; s/||/or/g; s/!/not/g' | tr ' ' '_')
-CARPETA_DESTINO="$CARPETA_RAIZ/$CARPETA_LIMPIA"
-mkdir -p "$CARPETA_DESTINO"
+## 🧹 **6. Create Aliases for Convenience**
 
-# Generate condition explicitly handling logical operators
-CONDITION=""
-for TOKEN in $PHRASE; do
-  case "$TOKEN" in
-    "&&")
-      CONDITION="$CONDITION &&"
-      ;;
-    "||")
-      CONDITION="$CONDITION ||"
-      ;;
-    "!")
-      CONDITION="$CONDITION !"
-      ;;
-    *)
-      CONDITION="$CONDITION (\$UserComment =~ /$TOKEN/i)"
-      ;;
-  esac
-done
-
-echo "Generated condition: $CONDITION"
-
-# Run exiftool to copy matching files
-exiftool -r -if "$CONDITION" -p "\$Directory/\$Filename" "$CARPETA_ORIGEN" | while read FILE; do
-  cp "$FILE" "$CARPETA_DESTINO/" || echo "Error copying $FILE"
-done
-
-echo "Images copied to $CARPETA_DESTINO."
-
-Make the Script Executable:
-
-    chmod +x fnc.sh
-
-🚀 5. How to Use the Script
-
-    Search for Images with Keywords:
-
-~/scripts/fnc.sh 'elf && Christmas || !Santa'
-
-    Matching images will be copied to ~/storage/shared/xImages/elf_and_Christmas_or_notSanta.
-
-Purge All Results:
-
-~/scripts/fnc.sh -purge
-
-Verify Copied Files:
-
-    ls ~/storage/shared/xImages
-
-🧹 6. Create Aliases for Convenience
-
-To simplify usage, add these aliases to your .bashrc:
-
+To simplify usage, add these aliases to your `.bashrc`:  
+```bash
 echo "alias civitai-latest='node ~/civitai-sync/src/cli.mjs download-latest-generations'" >> ~/.bashrc
 echo "alias findcivitai='~/scripts/fnc.sh'" >> ~/.bashrc
 source ~/.bashrc
+```
 
-Usage:
+**Usage:**  
+- `civitai-latest` → Download latest generations.  
+- `findcivitai "elf && Christmas"` → Search and copy images.  
+- `findcivitai -purge` → Clean all results.
 
-    civitai-latest → Download latest generations.
-    findcivitai "elf && Christmas" → Search and copy images.
-    findcivitai -purge → Clean all results.
+---
 
-📂 7. Final Check
+## 📂 **7. Final Check**
 
-    Download New Images:
+1. **Download New Images:**  
+   ```bash
+   civitai-latest
+   ```
 
-civitai-latest
+2. **Search with Keywords:**  
+   ```bash
+   findcivitai "angel && wings"
+   ```
 
-Search with Keywords:
+3. **Purge Old Results (if needed):**  
+   ```bash
+   findcivitai -purge
+   ```
 
-findcivitai "angel && wings"
+---
 
-Purge Old Results (if needed):
+## 🎯 **Done!**
+You now have a **portable and efficient setup** for managing and searching CivitAI-generated images directly on your Android device.
 
-    findcivitai -purge
+Let me know if you encounter any issues! 🚀
 
 🎯 Done!
 
